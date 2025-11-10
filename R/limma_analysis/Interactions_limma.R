@@ -27,9 +27,36 @@ se_log2fc <- SummarizedExperiment(
     colData = DataFrame(metadata_log2fc)
 )
 
+# TRIAL x SEX INTERACTION -------------------------------------------------
+
+#create design matrix for interaction between log2fold change in males and females
+design_sex <- model.matrix(~0 + se_log2fc$sex)
+colnames(design_sex) <- c("female", "male")
+
+#define comparison using contrast
+contrast_sex <- makeContrasts(male - female, levels = design_sex)
+
+#correlation between samples from same subject
+correlation_sex <- duplicateCorrelation(assay(se_log2fc), design_sex, block = se_log2fc$subject)
+
+#Use Bayes statistics to assess differential expression interaction between males and females
+fit_sex <- eBayes(lmFit(assay(se_log2fc), design_sex, block = se_log2fc$subject, correlation = correlation_sex$consensus.correlation))
+ebayes_sex <- eBayes(contrasts.fit(fit_sex, contrast_sex))
+
+#extract results
+results_sex <- topTable(ebayes_sex, coef = 1, number = Inf, sort.by = "logFC") %>%
+    dplyr::mutate(xiao=10^-(sqrt(log10(1/(P.Value^logFC))^2))) %>%
+    dplyr::mutate(protein = row.names(.),
+                  q = qvalue(.$P.Value)$qvalues,
+                  qiao = qvalue(.$xiao)$qvalues,
+                  "-log10p" = -log10(.$P.Value),
+                  regulated_xiao = ifelse(xiao < 0.05, "+", ""),
+                  regulated_qiao = ifelse(qiao < 0.05, "+", ""),
+                  regulated_q = ifelse(q < 0.05, "+", "")
+    )%>%
+    arrange(desc(logFC))
 
 # TRIAL x FIBERTYPE INTERACTION -------------------------------------------
-
 
 #create design matrix for interaction between log2fold change in type I and type II fibers
 design_fibertype <- model.matrix(~0 + se_log2fc$fibertype)
@@ -60,33 +87,6 @@ results_fibertype <- topTable(ebayes_fibertype, coef = 1, number = Inf, sort.by 
 
 
 
-# TRIAL x SEX INTERACTION -------------------------------------------------
 
-#create design matrix for interaction between log2fold change in type I and type II fibers
-design_sex <- model.matrix(~0 + se_log2fc$sex)
-colnames(design_sex) <- c("female", "male")
-
-#define comparison using contrast
-contrast_sex <- makeContrasts(male - female, levels = design_sex)
-
-#correlation between samples from same subject
-correlation_sex <- duplicateCorrelation(assay(se_log2fc), design_sex, block = se_log2fc$subject)
-
-#Use Bayes statistics to assess differential expression interaction between type I and type II fibers
-fit_sex <- eBayes(lmFit(assay(se_log2fc), design_sex, block = se_log2fc$subject, correlation = correlation_sex$consensus.correlation))
-ebayes_sex <- eBayes(contrasts.fit(fit_sex, contrast_sex))
-
-#extract results
-results_sex <- topTable(ebayes_sex, coef = 1, number = Inf, sort.by = "logFC") %>%
-    dplyr::mutate(xiao=10^-(sqrt(log10(1/(P.Value^logFC))^2))) %>%
-    dplyr::mutate(protein = row.names(.),
-                  q = qvalue(.$P.Value)$qvalues,
-                  qiao = qvalue(.$xiao)$qvalues,
-                  "-log10p" = -log10(.$P.Value),
-                  regulated_xiao = ifelse(xiao < 0.05, "+", ""),
-                  regulated_qiao = ifelse(qiao < 0.05, "+", ""),
-                  regulated_q = ifelse(q < 0.05, "+", "")
-    )%>%
-    arrange(desc(logFC))
 
 
